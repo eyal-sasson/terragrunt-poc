@@ -1,0 +1,3 @@
+db_name: payment-service-db
+size: small
+version: "15"

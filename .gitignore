@@ -1,0 +1,6 @@
+# Terragrunt / Terraform working artifacts
+.terragrunt-cache/
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
