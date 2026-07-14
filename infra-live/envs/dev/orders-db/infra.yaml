@@ -1,0 +1,3 @@
+db_name: orders-service-db
+size: medium
+pg_version: "16"

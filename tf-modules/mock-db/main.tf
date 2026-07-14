@@ -13,5 +13,6 @@ resource "local_file" "database_simulation" {
   "db-custom-4-15360"
 }
     Private IP Only: TRUE (Enforced by Platform)
+    Encryption At Rest: TRUE (Enforced by Platform v1.1.0)
   EOF
 }
