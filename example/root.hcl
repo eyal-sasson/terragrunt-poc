@@ -13,8 +13,8 @@ terraform_binary = "terraform"
 # developers never edit their own terragrunt.hcl.
 locals {
   # Base of the published modules repo. In production this would be
-  # e.g. "git::https://github.com/your-org/tf-modules.git"
-  module_base    = "git::file://${get_repo_root()}//tf-modules"
-  module_version = "v1.0.0"
+  # e.g. "git::https://github.com/your-org/modules.git"
+  module_base    = "git::file://${get_repo_root()}//modules"
+  module_version = "v1.1.0"
 }
 

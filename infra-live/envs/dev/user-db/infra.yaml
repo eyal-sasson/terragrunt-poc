@@ -1,3 +1,0 @@
-db_name: payment-service-db
-size: small
-pg_version: "15"

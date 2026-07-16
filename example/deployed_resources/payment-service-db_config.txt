@@ -4,3 +4,4 @@ Resource Name: payment-service-db-prod
 Engine: POSTGRES_15
 Instance Tier: db-f1-micro
 Private IP Only: TRUE (Enforced by Platform)
+Encryption At Rest: TRUE (Enforced by Platform v1.1.0)

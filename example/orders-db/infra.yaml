@@ -1,0 +1,6 @@
+# One file describes ALL infrastructure for the orders app.
+# Each top-level key is a module; the developer edits only this file.
+cloudsql:
+  db_name: orders-service-db
+  size: medium
+  pg_version: "16"

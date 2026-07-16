@@ -4,3 +4,4 @@ Resource Name: orders-service-db-prod
 Engine: POSTGRES_16
 Instance Tier: db-custom-2-7680
 Private IP Only: TRUE (Enforced by Platform)
+Encryption At Rest: TRUE (Enforced by Platform v1.1.0)

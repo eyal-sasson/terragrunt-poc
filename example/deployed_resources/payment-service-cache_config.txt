@@ -1,0 +1,7 @@
+Infrastructure Deployed Successfully!
+-------------------------------------
+Resource Name: payment-service-cache-prod
+Engine: REDIS_7
+Instance Tier: cache.t3.micro
+Private IP Only: TRUE (Enforced by Platform)
+Encryption At Rest: TRUE (Enforced by Platform v1.1.0)
