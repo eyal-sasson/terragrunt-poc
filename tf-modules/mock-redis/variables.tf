@@ -13,7 +13,7 @@ variable "node_type" {
   }
 }
 
-variable "version" {
+variable "redis_version" {
   type        = string
   description = "The Redis version"
 }

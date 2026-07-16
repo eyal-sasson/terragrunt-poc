@@ -6,7 +6,7 @@ resource "local_file" "redis_simulation" {
     Infrastructure Deployed Successfully!
     -------------------------------------
     Resource Name: ${var.name}-prod
-    Engine: REDIS_${var.version}
+    Engine: REDIS_${var.redis_version}
     Instance Tier: ${
   var.node_type == "small" ? "cache.t3.micro" :
   var.node_type == "medium" ? "cache.m5.large" :
