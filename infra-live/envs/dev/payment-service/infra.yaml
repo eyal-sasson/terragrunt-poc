@@ -1,0 +1,11 @@
+# One file describes ALL infrastructure for the payment-service app.
+# Each top-level key is a module; the developer edits only this file.
+cloudsql:
+  db_name: payment-service-db
+  size: small
+  pg_version: "15"
+
+redis:
+  name: payment-service-cache
+  node_type: small
+  version: "7"
