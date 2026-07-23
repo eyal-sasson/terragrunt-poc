@@ -1,33 +1,26 @@
-# One stack describes ALL infrastructure for the payment-service app.
-# Each `unit` block generates an isolated, independently-applied module
-# (its own Terraform state) from the shared service-module template.
+# All infrastructure for the payment-service app.
+# Each module you declare in infra.yaml gets ONE small unit block here — just
+# `source` (the platform template, read from the team's platform.hcl) and `path`
+# (the unit name, which must match the infra.yaml key). The template derives
+# everything else (which module to pull, this unit's vars, output dir) from that
+# name. There is NO per-service assembly — the fetch URL lives in platform.hcl.
 #
-# Adding a module = add its block to infra.yaml + a small `unit` block here.
-# No new directory to create by hand — terragrunt generates it under
-# .terragrunt-stack/ from the `path` below.
+# Adding a module = add a block to infra.yaml + a 3-line unit here.
+# Two units on the SAME module? Give each a distinct name and set `module:` in
+# its infra.yaml block to point at the shared module.
 
 locals {
-  app_vars   = yamldecode(file("${get_terragrunt_dir()}/infra.yaml"))
-  template   = "${get_repo_root()}/example/_templates/service-module"
-  output_dir = "${get_repo_root()}/example/deployed_resources"
+  # The fully-built platform fetch URL (repo + version), assembled once in
+  # example/platform.hcl and read directly here.
+  template = read_terragrunt_config(find_in_parent_folders("platform.hcl")).locals.template
 }
 
 unit "cloudsql" {
   source = local.template
   path   = "cloudsql"
-  values = {
-    module_name    = "mock-db"
-    developer_vars = local.app_vars.cloudsql
-    output_dir     = local.output_dir
-  }
 }
 
 unit "redis" {
   source = local.template
   path   = "redis"
-  values = {
-    module_name    = "mock-redis"
-    developer_vars = local.app_vars.redis
-    output_dir     = local.output_dir
-  }
 }

@@ -13,7 +13,7 @@ There are two roles, with a clean split of ownership:
 
 | Role | Owns | Files |
 | --- | --- | --- |
-| **Platform team** | The reusable modules and the pinned module version | `modules/`, `example/root.hcl`, `example/_templates/` |
+| **Platform team** | The reusable modules, the root config, and the pinned module version | `platform/` (`modules/`, `root.hcl`, `_templates/`) |
 | **Developer** | *What* infrastructure their app needs | `example/<service>/infra.yaml` |
 
 A developer describes their app's infrastructure in `infra.yaml` (e.g. "I need a small Postgres 15
@@ -24,16 +24,20 @@ unit using a shared template — so developers never write HCL or manage state l
 
 ```
 .
-├── modules/                    # PLATFORM: reusable "cloud" modules (versioned via git tag)
-│   ├── mock-db/                #   simulates a CloudSQL Postgres instance
-│   └── mock-redis/             #   simulates a Redis instance
+├── platform/                    # PLATFORM: managed & versioned by the platform team
+│   ├── root.hcl                #   included by services; pins module version + remote-state design
+│   ├── _templates/             #   the generic unit template all modules reuse
+│   └── modules/                #   reusable "cloud" modules
+│       ├── cloudsql/          #     simulates a CloudSQL Postgres instance
+│       └── redis/             #     simulates a Redis instance
 └── example/                    # A ready-to-run example environment
-    ├── root.hcl                #   PLATFORM: one place to pin the module version
-    ├── _templates/             #   PLATFORM: the generic unit template all modules reuse
     ├── deployed_resources/     #   simulated rendered output (what got "provisioned")
     ├── payment-service/        #   DEVELOPER: an app needing a DB + a cache
     └── orders-db/              #   DEVELOPER: an app needing just a DB
 ```
+
+In production `platform/` lives in a separate repo that services `include` by a pinned version;
+here it's a sibling directory the example includes directly.
 
 ## Try it
 

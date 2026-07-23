@@ -15,7 +15,7 @@ All paths below are relative to the repo root (`terragrunt-poc/`).
 
 Already installed in this container. If starting fresh on Ubuntu, you need
 `terragrunt` (1.1.0 — `stack` commands are used) and `terraform` on `PATH`.
-There is **no** `tofu` binary here; `example/root.hcl` pins
+There is **no** `tofu` binary here; `platform/root.hcl` pins
 `terraform_binary = "terraform"` for that reason.
 
 ```bash
@@ -76,12 +76,13 @@ See `example/README.md` for the developer walkthrough.
 
 ## Gotchas
 
-- **Modules are fetched by git tag, not from the working tree.** The template
-  (`example/_templates/service-module/terragrunt.hcl`) sources modules as
-  `git::file://<repo_root>//modules/<name>?ref=v1.1.0`. If you edit anything
-  under `modules/`, `apply` still pulls the **committed `v1.1.0` tag** — your
-  change is invisible until you re-tag: `git tag -f v1.1.0 && ` re-run. Bump
-  `module_version` in `example/root.hcl` to point every service at a new tag.
+- **Modules are fetched from a local path in the working tree.** The template
+  (`platform/_templates/service-module/terragrunt.hcl`) `include`s the managed
+  `platform/root.hcl` and sources modules as `${module_base}/<name>` where
+  `module_base = <repo_root>/platform/modules`. Editing anything under
+  `platform/modules/` takes effect on the next `apply` immediately — **no git
+  tag to move.** (In production, `root.hcl` is included by a pinned version, and
+  that version pins the modules alongside it.)
 - **Non-interactive is required for automation.** Without `--non-interactive`
   (or piping `yes`), `stack run apply` prompts for approval and hangs headless.
 - **`terraform_binary = "terraform"` in `root.hcl` is load-bearing.** Terragrunt
@@ -96,14 +97,13 @@ See `example/README.md` for the developer walkthrough.
 
 ## Troubleshooting
 
-- **`Error: Initializing the backend... git ... ref v1.1.0 not found`** — the
-  `v1.1.0` tag is missing. `git tag v1.1.0` (or checkout a commit that has it).
+- **`Error: ... /platform/modules/<name> does not exist`** — the module folder
+  is missing or misnamed under `platform/modules/`. The module pulled defaults
+  to the unit name (or the `module:` key in the `infra.yaml` block); check both.
 - **Apply hangs with no output** — you dropped `--non-interactive`; it's waiting
   on the `Are you sure?` prompt. Ctrl-C and re-run with the flag.
-- **`No changes` on a fresh apply / stale output** — you edited a module but
-  didn't re-tag; see the git-tag gotcha above.
 - **`tofu: executable file not found in $PATH`** — `terraform_binary` was
-  removed from `example/root.hcl`; restore it.
+  removed from `platform/root.hcl`; restore it.
 
 ## Test
 

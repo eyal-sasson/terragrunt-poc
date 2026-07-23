@@ -21,20 +21,20 @@ Each service has two files:
     redis_version: "7"
   ```
 
-- **`terragrunt.stack.hcl`** — wires each YAML block to a platform module. One `unit` block per
-  module, all pointing at the shared template in `_templates/service-module/`:
+- **`terragrunt.stack.hcl`** — declares one **minimal** `unit` block per module, all pointing at the
+  shared template in `platform/_templates/service-module/`. A unit is just `source` + `path` (its
+  name); the template derives everything else from that name:
 
   ```hcl
   unit "redis" {
-    source = local.template          # the shared generic unit — no per-module HCL to write
-    path   = "redis"                 # terragrunt generates this dir for you under .terragrunt-stack/
-    values = {
-      module_name    = "mock-redis"
-      developer_vars = local.app_vars.redis   # this module's slice of infra.yaml
-      output_dir     = local.output_dir
-    }
+    source = local.template   # the shared generic unit — no per-module HCL to write
+    path   = "redis"          # MUST match the infra.yaml key; the template keys off this name
   }
   ```
+
+  The unit name (`redis`) is both the `infra.yaml` key whose values it gets **and** the module it
+  pulls (module dirs are named to match). Need two units on one module? Name them differently and
+  add `module: redis` to each one's `infra.yaml` block.
 
 Terragrunt generates one isolated unit per `unit` block under `.terragrunt-stack/`, each with its
 **own Terraform state** — so modules plan and apply independently.
@@ -55,17 +55,21 @@ The simulated result is written to `example/deployed_resources/<name>_config.txt
 
 No new directory to create by hand:
 
-1. Add a block to the service's `infra.yaml`.
-2. Add a matching ~6-line `unit` block to its `terragrunt.stack.hcl` (source = the shared template,
-   `module_name` = the platform module, `developer_vars` = your new YAML slice).
+1. Add a block to the service's `infra.yaml` (the top-level key = the unit name).
+2. Add a matching **2-line** `unit` block to its `terragrunt.stack.hcl` (`source = local.template`,
+   `path` = the same name). No `values` — the template derives the module, vars, and output dir.
 3. `terragrunt stack run apply`.
 
 ## What the platform owns (don't edit as a developer)
 
-- **`root.hcl`** — pins the module version (`module_version`) for the whole environment. Bumping it
-  here upgrades every service at once.
-- **`_templates/service-module/terragrunt.hcl`** — the single generic unit that every module reuses.
-- **`../modules/`** — the module implementations.
+Everything under `platform/` (a separate, versioned repo in production; a sibling dir here):
 
-> Note: modules are fetched by git tag (`?ref=<module_version>`). If you change a module's source
-> here, re-point the tag (`git tag -f <version>`) or the change won't be picked up.
+- **`platform/root.hcl`** — included by every service; pins the module version (`module_version`)
+  for the whole environment and carries the production remote-state design. One place to upgrade.
+- **`platform/_templates/service-module/terragrunt.hcl`** — the single generic unit that every
+  module reuses.
+- **`platform/modules/`** — the module implementations.
+
+> Note: modules are sourced from a local path within `platform/`, so editing one takes effect on the
+> next apply — no git tag to move. In production the `include` of `root.hcl` is pinned to a version,
+> and that version pins the modules alongside it.
