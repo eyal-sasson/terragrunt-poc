@@ -14,50 +14,56 @@ instead of calling a real provider. Everything runs locally with just `terragrun
 1. **`example/<service>/infra.yaml`** — developer-owned. Each top-level key is one module; its
    sub-keys are that module's inputs. Example: `payment-service/infra.yaml` has a `cloudsql:` block
    and a `redis:` block.
-2. **`example/platform.hcl`** — **team-owned**, set ONCE per team. Holds `platform_version` (a git
-   tag of the platform repo) and later per-team facts (gcp project, deployer SA). Every service
-   under it inherits the pin via `find_in_parent_folders("platform.hcl")` — the version is **never**
-   repeated in an `infra.yaml` or stack file. Upgrading a team = bump this one line.
-3. **`example/<service>/terragrunt.stack.hcl`** — one **minimal** `unit` block per module: just
-   `source` (the shared template) + `path` (the unit name, which must equal the `infra.yaml` key).
-   No `values` — the template derives which module to pull, this unit's vars, and the output dir
-   from the unit name. Terragrunt generates an isolated unit (its own state) per block under
-   `.terragrunt-stack/`.
-4. **`platform/_templates/service-module/terragrunt.hcl`** — the single generic unit every module
-   reuses. Discovers the team's `platform.hcl` pin via `find_in_parent_folders`, `include`s the
-   managed `platform/root.hcl` (in production: the platform repo at that git tag), then **derives**
-   from its own unit name: `module_name` (defaults to the unit name; overridable via a reserved
-   `module:` key in the `infra.yaml` block), this unit's `developer_vars` (its `infra.yaml` slice),
-   and `output_dir`. There is **no per-module terragrunt.hcl** — this template is it.
-5. **`platform/root.hcl`** — platform-owned & managed. Included by the template (in production: a
-   **versioned remote include** at the tag from `platform.hcl`; in this PoC: `${get_repo_root()}/
-   platform/root.hcl`). `module_base` + `module_version` pin which module version every service
-   gets. Also carries the commented **production `remote_state`** design (see below).
-6. **`platform/modules/<name>/`** — the module implementations (`cloudsql`, `redis`). Module dir
+2. **`example/platform.hcl`** — **team-owned**, set ONCE per team. Holds `platform_repo` +
+   `platform_version` and assembles the `template` fetch URL from them. `platform_version` is a git
+   tag of the platform repo (special value `local-dev` sources the working tree — see gotchas).
+   Every service under it reads `template` via `find_in_parent_folders("platform.hcl")` — the
+   version is **never** repeated in an `infra.yaml` or stack file. Upgrading a team = bump this one
+   line. (Also the natural home for future per-team facts: gcp project, deployer SA.)
+3. **`example/<service>/terragrunt.stack.hcl`** — a 1-line `locals` reading `template` from
+   `platform.hcl`, then one **minimal** `unit` block per module: just `source = local.template` +
+   `path` (the unit name, which must equal the `infra.yaml` key). No `values` — the template derives
+   which module to pull, this unit's vars, and the output dir from the unit name. Terragrunt
+   generates an isolated unit (its own state) per block under `.terragrunt-stack/`.
+4. **`platform/terragrunt.hcl`** — the single **self-contained** generic unit every module reuses.
+   It IS the template AND the (folded-in) platform root config: `terraform_binary`, the derivation
+   logic, and the commented `remote_state`. Fetched WHOLE by a service's `unit.source` at the pinned
+   git ref (`git::file://<repo-root>//platform?ref=<tag>`), which pulls this file **and** `modules/`
+   together so they're always the same version. Derives from its own unit name: `module_name`
+   (defaults to the unit name; overridable via a reserved `module:` key in the `infra.yaml` block),
+   this unit's `developer_vars` (its `infra.yaml` slice), and `output_dir`. There is **no per-module
+   terragrunt.hcl** and **no separate root.hcl** — an `include` can't take a git ref and a fetched
+   sub-dir strands a sibling root.hcl, so root config lives here and the module source is a same-repo
+   relative path (`${get_terragrunt_dir()}/modules/${module_name}`).
+5. **`platform/modules/<name>/`** — the module implementations (`cloudsql`, `redis`). Module dir
    names **match the `infra.yaml` aliases** so `module_name` defaults to the unit name. Each
    simulates a resource via a `local_file`.
 
-Ownership split: **platform** owns everything under `platform/` (`root.hcl`, `_templates/`,
-`modules/`); **team** owns `example/platform.hcl` (the version pin); **developer** owns their
+Ownership split: **platform** owns everything under `platform/` (`terragrunt.hcl` + `modules/`);
+**team** owns `example/platform.hcl` (the repo + version pin); **developer** owns their
 `example/<service>/` (`infra.yaml` + stack file).
 
 ## Remote state (production design)
 
-`platform/root.hcl` documents the production `remote_state` (commented — no GCP in this PoC):
+`platform/terragrunt.hcl` documents the production `remote_state` (commented — no GCP in this PoC):
 **one platform-owned GCS bucket**, bootstrapped once out-of-band; developers never define or create
-a bucket. Every unit inherits the backend through the template's `include "root"`, so developers
-write **no** backend config. State isolation comes from the key `<project_id>/<unit-path>`, where
+a bucket. Every unit inherits the backend (it's in the fetched template), so developers write
+**no** backend config. State isolation comes from the key `<project_id>/<unit-path>`, where
 `project_id` is sourced from the **runtime deploy target** (never from `infra.yaml` or a hand-typed
 field) — so the state key and the real resources always share one project, and no team can write
 another team's state. `path_relative_to_include()` makes the unit path unique per module.
 
 ## Critical gotchas
 
-- **Modules are now fetched by LOCAL path**, not git tag. `root.hcl` sets
-  `module_base = "${get_repo_root()}/platform/modules"` and the template source is
-  `${module_base}/${module_name}` (no `?ref=`). Since `root.hcl` and `modules/` live in the same
-  `platform/` tree, **editing a module takes effect immediately — no `git tag -f` dance.** In
-  production the include's version pin versions the modules alongside `root.hcl`.
+- **The platform is fetched by git ref** (`git::file://<repo-root>//platform?ref=<tag>`). The git
+  getter reads the **committed tag**, not the working tree — so editing `platform/` is invisible
+  until you commit AND move the tag (`git tag -f <tag>`). To iterate WITHOUT committing, set
+  `platform_version = "local-dev"` in `platform.hcl`: `template` then points at the working-tree
+  path (no `?ref`) and edits apply on the next run. The smoke driver auto-toggles to `local-dev` for
+  its applies, then does one pass at the real tag to prove the fetch path.
+- **The git source syntax is `<repo-root>//<subdir>?ref=<tag>`.** The git repo is the PROJECT root;
+  `platform/` is a subdir. Pointing `git::file://` straight at `platform/` fails ("not a git
+  repository") — the `//platform` part selects the subdir within the repo.
 - **`version` is a reserved Terraform variable name.** `redis` uses `redis_version`, and
   `cloudsql` uses `pg_version` — never a bare `version` variable.
 - **Unit name must equal the `infra.yaml` key.** The template keys off `basename` of the unit dir
@@ -74,7 +80,8 @@ No directory to create by hand:
    same name). No `values` — the template derives the rest. Reuse a module for a second instance by
    naming the block differently and adding `module: <module-dir>` to its `infra.yaml` block.
 3. If it's a brand-new module, add it under `platform/modules/<name>/` (name it to match the alias).
-   It takes effect immediately (local path) — no tag to move.
+   With `platform_version = "local-dev"` it takes effect immediately; to release it, commit and move
+   the tag.
 
 ## Running / verifying
 
@@ -99,10 +106,11 @@ terragrunt stack run destroy --non-interactive   # removes the simulated *_confi
 hangs headless. The first apply downloads the `hashicorp/local` provider (needs network once); later
 runs are cached under `.terragrunt-cache/`.
 
-Always run the smoke test after changing a module, template, stack file, or `root.hcl`.
+Always run the smoke test after changing a module, the `platform/terragrunt.hcl` template, a stack
+file, or `platform.hcl`.
 
 ## Conventions
 
-- Requires Terragrunt with `stack` support (tested on 1.1.0). `root.hcl` pins
+- Requires Terragrunt with `stack` support (tested on 1.1.0). `platform/terragrunt.hcl` pins
   `terraform_binary = "terraform"` (no OpenTofu here).
 - Commits use the repo's global git identity; there is intentionally no local user override.

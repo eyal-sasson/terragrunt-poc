@@ -15,7 +15,7 @@ All paths below are relative to the repo root (`terragrunt-poc/`).
 
 Already installed in this container. If starting fresh on Ubuntu, you need
 `terragrunt` (1.1.0 — `stack` commands are used) and `terraform` on `PATH`.
-There is **no** `tofu` binary here; `platform/root.hcl` pins
+There is **no** `tofu` binary here; `platform/terragrunt.hcl` pins
 `terraform_binary = "terraform"` for that reason.
 
 ```bash
@@ -76,18 +76,24 @@ See `example/README.md` for the developer walkthrough.
 
 ## Gotchas
 
-- **Modules are fetched from a local path in the working tree.** The template
-  (`platform/_templates/service-module/terragrunt.hcl`) `include`s the managed
-  `platform/root.hcl` and sources modules as `${module_base}/<name>` where
-  `module_base = <repo_root>/platform/modules`. Editing anything under
-  `platform/modules/` takes effect on the next `apply` immediately — **no git
-  tag to move.** (In production, `root.hcl` is included by a pinned version, and
-  that version pins the modules alongside it.)
+- **The platform is fetched by git tag, not the working tree.** A service's
+  `unit.source` resolves to `git::file://<repo-root>//platform?ref=<version>`
+  (built in `example/platform.hcl`), which fetches the self-contained template
+  `platform/terragrunt.hcl` **and** `platform/modules/` together at the pinned
+  tag. So editing `platform/` is invisible until you commit AND move the tag
+  (`git tag -f <tag>`). For fast iteration, set `platform_version = "local-dev"`
+  in `platform.hcl` — `template` then points at the working-tree path (no
+  `?ref`) and edits apply immediately. **The smoke driver auto-toggles to
+  `local-dev` for its applies**, then does one pass at the real tag to prove the
+  fetch path, restoring the original pin on exit.
+- **Git source syntax is `<repo-root>//<subdir>?ref=<tag>`.** The git repo is the
+  project root; `platform/` is a subdir. Pointing `git::file://` straight at
+  `platform/` fails with "not a git repository".
 - **Non-interactive is required for automation.** Without `--non-interactive`
   (or piping `yes`), `stack run apply` prompts for approval and hangs headless.
-- **`terraform_binary = "terraform"` in `root.hcl` is load-bearing.** Terragrunt
-  defaults to `tofu`, which isn't installed here; removing that line breaks
-  every command with "tofu: executable file not found".
+- **`terraform_binary = "terraform"` in `platform/terragrunt.hcl` is
+  load-bearing.** Terragrunt defaults to `tofu`, which isn't installed here;
+  removing that line breaks every command with "tofu: executable file not found".
 - **Generated dirs are git-ignored and safe to nuke.** `.terragrunt-stack/`,
   `.terragrunt-cache/`, and `*.tfstate` are regenerated on the next apply; the
   driver wipes them each run for a clean start.
@@ -97,13 +103,20 @@ See `example/README.md` for the developer walkthrough.
 
 ## Troubleshooting
 
-- **`Error: ... /platform/modules/<name> does not exist`** — the module folder
-  is missing or misnamed under `platform/modules/`. The module pulled defaults
-  to the unit name (or the `module:` key in the `infra.yaml` block); check both.
+- **`... does not appear to be a git repository` / `failed to resolve reference
+  <tag>`** — the platform fetch source or tag is wrong. Check `platform_repo`
+  (`git::file://<repo-root>`, repo root not `platform/`) and that the tag exists
+  (`git tag`). Or set `platform_version = "local-dev"` to skip the fetch.
+- **`Error: ... /modules/<name> does not exist`** — the module folder is missing
+  or misnamed under `platform/modules/`. The module pulled defaults to the unit
+  name (or the `module:` key in the `infra.yaml` block); check both.
+- **Stale platform code after an edit** — you're pinned to a tag; the fetch uses
+  the committed tag, not your edit. Commit + `git tag -f <tag>`, or use
+  `local-dev`.
 - **Apply hangs with no output** — you dropped `--non-interactive`; it's waiting
   on the `Are you sure?` prompt. Ctrl-C and re-run with the flag.
 - **`tofu: executable file not found in $PATH`** — `terraform_binary` was
-  removed from `platform/root.hcl`; restore it.
+  removed from `platform/terragrunt.hcl`; restore it.
 
 ## Test
 

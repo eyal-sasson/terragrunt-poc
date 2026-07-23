@@ -21,13 +21,18 @@ Each service has two files:
     redis_version: "7"
   ```
 
-- **`terragrunt.stack.hcl`** — declares one **minimal** `unit` block per module, all pointing at the
-  shared template in `platform/_templates/service-module/`. A unit is just `source` + `path` (its
+- **`terragrunt.stack.hcl`** — a 1-line `locals` that reads the `template` fetch URL from the team's
+  `platform.hcl`, then one **minimal** `unit` block per module. A unit is just `source` + `path` (its
   name); the template derives everything else from that name:
 
   ```hcl
+  locals {
+    # the platform fetch URL (repo + version), assembled once in platform.hcl
+    template = read_terragrunt_config(find_in_parent_folders("platform.hcl")).locals.template
+  }
+
   unit "redis" {
-    source = local.template   # the shared generic unit — no per-module HCL to write
+    source = local.template   # the shared generic template — no per-module HCL to write
     path   = "redis"          # MUST match the infra.yaml key; the template keys off this name
   }
   ```
@@ -62,14 +67,17 @@ No new directory to create by hand:
 
 ## What the platform owns (don't edit as a developer)
 
-Everything under `platform/` (a separate, versioned repo in production; a sibling dir here):
+Everything under `platform/` (a separate, git-tagged repo in production; a subdir here):
 
-- **`platform/root.hcl`** — included by every service; pins the module version (`module_version`)
-  for the whole environment and carries the production remote-state design. One place to upgrade.
-- **`platform/_templates/service-module/terragrunt.hcl`** — the single generic unit that every
-  module reuses.
-- **`platform/modules/`** — the module implementations.
+- **`platform/terragrunt.hcl`** — the self-contained generic template AND the folded-in root config
+  (`terraform_binary`, the derivation logic, the commented remote-state design). Fetched whole, by
+  git ref, so it and the modules are always the same version.
+- **`platform/modules/`** — the module implementations, fetched alongside the template.
 
-> Note: modules are sourced from a local path within `platform/`, so editing one takes effect on the
-> next apply — no git tag to move. In production the `include` of `root.hcl` is pinned to a version,
-> and that version pins the modules alongside it.
+Your **team** owns one file: `example/platform.hcl`, which pins `platform_repo` + `platform_version`
+and builds the `template` URL every service reads.
+
+> Note: the platform is fetched by git tag (`git::.../platform?ref=<version>`), so editing platform
+> code takes effect only after you commit and move the tag. For fast iteration, set
+> `platform_version = "local-dev"` in `platform.hcl` — `template` then points at the working tree
+> and edits apply on the next run with no commit. (The smoke driver does this toggling for you.)
