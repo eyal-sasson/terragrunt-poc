@@ -14,10 +14,16 @@
 #   platform_version : a GIT TAG of that repo. Fetching the platform template at
 #                      this ref pulls the template AND modules together — one tag
 #                      versions the entire platform for this team.
+#                      SPECIAL VALUE "local-dev": bypass the git fetch and source
+#                      the platform working tree directly (see `template` below).
 #   template         : the composed source URL the units point at.
 #
-# NOTE: because this is a real git fetch, platform code changes are only picked
-# up after they're committed and the tag is (re)moved — see the platform README.
+# NOTE: with a real version (e.g. v1.1.0) this is a git fetch, so platform code
+# changes are only picked up after they're committed and the tag is (re)moved.
+# For fast local iteration on platform code, set platform_version = "local-dev":
+# `template` then points at the working-tree path (no ?ref), so edits under
+# platform/ take effect on the next apply with NO commit/tag. This is a dev-loop
+# convenience only — real teams pin a tag.
 #
 # FUTURE (see discussion): this same file is the natural home for the other
 # per-team facts we don't want in each service, e.g.:
@@ -26,11 +32,23 @@
 # ----------------------------------------------------------------------------
 
 locals {
-  platform_repo    = "git::file://${get_repo_root()}/platform"
+  # The git repo that HOLDS the platform. In production this is the platform
+  # repo itself ("git::https://github.com/acme/platform.git"); here the platform
+  # lives in the `platform/` subdir of THIS repo, so the source is
+  # <repo-root>//platform (git getter syntax: <repo>//<subdir>?ref=<tag>).
+  platform_repo    = "git::file://${get_repo_root()}"
+  platform_subdir  = "platform"
   platform_version = "v1.1.0"
 
-  # Fully-built fetch URL — services read THIS directly, nothing to assemble.
-  # `//.` = the platform repo root (self-contained template + modules);
-  # ?ref pins the whole platform to one tag.
-  template = "${local.platform_repo}//.?ref=${local.platform_version}"
+  # Fully-built source the units point at — services read THIS directly.
+  #   - "local-dev"      -> the platform working tree (plain path, no ?ref):
+  #                         instant edits, no commit/tag. Dev loop only.
+  #   - a tag (v1.1.0)   -> git fetch of the platform subdir at that ref
+  #                         (template + modules together), pinning the entire
+  #                         platform to one version.
+  template = (
+    local.platform_version == "local-dev"
+    ? "${get_repo_root()}/${local.platform_subdir}"
+    : "${local.platform_repo}//${local.platform_subdir}?ref=${local.platform_version}"
+  )
 }
